@@ -124,14 +124,9 @@ func (m *Machine) CalcRTP(lines []Symbol, n, bet int) int {
 		}
 	}
 
-	fmt.Printf("lines:\n%s\n", m.PrintLines(lines))
 	total := m.Pays[m.ScatterSymbol][scatters]
 	for i := 0; i < n; i++ {
 		sym, count := m.CheckPayline(lines, i)
-		coeff := m.Pays[sym][count]
-		if coeff > 0 {
-			fmt.Printf("payline %d, sym %s, count %d, coeff %d\n", i+1, m.SymbolNames[sym], count, coeff)
-		}
 		total += m.Pays[sym][count]
 	}
 
