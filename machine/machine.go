@@ -1,9 +1,7 @@
 package machine
 
 import (
-	"fmt"
 	"math/rand"
-	"strings"
 )
 
 type Symbol int8
@@ -16,58 +14,79 @@ type Spin struct {
 	Stops []int
 }
 
-type Machine struct {
+type MachineSettings struct {
 	ReelStrips    [][]Symbol
 	Paylines      [][]int
 	Pays          [][]int
 	SymbolNames   map[Symbol]string
+	FreeSpins     int
+	FreeSpinsMult int
 	RetriggerFree bool
 	ScatterSymbol Symbol
 	WildSymbol    Symbol
-	NReels        int
+	ReelsCount    int
 }
 
-func (m *Machine) Run(n, bet int) []Spin {
-	stops := make([]int, m.NReels)
-	for i := 0; i < m.NReels; i++ {
-		stops[i] = rand.Intn(len(m.ReelStrips[i]))
+type Machine struct {
+	ms       *MachineSettings
+	paylines int
+	bet      int
+	spinFunc func(*Machine) ([]int, []Symbol)
+}
+
+func New(ms *MachineSettings, paylines, bet int, sf func(*Machine) ([]int, []Symbol)) *Machine {
+	if sf == nil {
+		sf = DefaultSpinFunc
 	}
 
-	lines := m.Spin(stops)
-	total := m.CalcRTP(lines, n, bet)
-
-	spins := []Spin{
-		{
-			Type:  "main",
-			Total: total,
-			Stops: stops,
-		},
+	return &Machine{
+		ms:       ms,
+		paylines: paylines,
+		bet:      bet,
+		spinFunc: sf,
 	}
+}
 
+func DefaultSpinFunc(m *Machine) ([]int, []Symbol) {
+	stops := make([]int, m.ms.ReelsCount)
+	for i := 0; i < m.ms.ReelsCount; i++ {
+		stops[i] = rand.Intn(len(m.ms.ReelStrips[i]))
+	}
+	return stops, m.Spin(stops)
+}
+
+func (m *Machine) Run() []Spin {
+	freeSpins, spin := m.run("main", 1)
+	spins := []Spin{spin}
+
+	for freeSpins != 0 {
+		freeSpins--
+		fs, spin := m.run("free", m.ms.FreeSpinsMult)
+		spins = append(spins, spin)
+		if m.ms.RetriggerFree {
+			freeSpins += fs
+		}
+	}
 	return spins
 }
 
-func (m *Machine) PrintLines(lines []Symbol) string {
-	b := &strings.Builder{}
-	for i := 0; i < 3; i++ {
-		offset := i * m.NReels
-		for j := 0; j < m.NReels; j++ {
-			fmt.Fprint(b, m.SymbolNames[lines[offset+j]])
-			if j != m.NReels-1 {
-				fmt.Fprint(b, ", ")
-			}
-		}
-		fmt.Fprint(b, "\n")
+func (m *Machine) run(typ string, ml int) (int, Spin) {
+	freeSpins := 0
+	stops, lines := m.spinFunc(m)
+	coeff := m.ScatterCoeff(lines)
+	if coeff > 0 {
+		freeSpins += m.ms.FreeSpins
 	}
+	coeff += m.PaylinesCoeff(lines)
 
-	return b.String()
+	return freeSpins, Spin{typ, coeff * m.bet * ml, stops}
 }
 
 func (m *Machine) Spin(stops []int) []Symbol {
-	lines := make([]Symbol, m.NReels*3)
+	lines := make([]Symbol, m.ms.ReelsCount*3)
 
-	for i := 0; i < m.NReels; i++ {
-		lastStop := len(m.ReelStrips[i]) - 1
+	for i := 0; i < m.ms.ReelsCount; i++ {
+		lastStop := len(m.ms.ReelStrips[i]) - 1
 		var stop1, stop2, stop3 int
 
 		stop2 = stops[i]
@@ -82,9 +101,9 @@ func (m *Machine) Spin(stops []int) []Symbol {
 			stop3 = stop2 + 1
 		}
 
-		lines[i] = m.ReelStrips[i][stop1]
-		lines[m.NReels+i] = m.ReelStrips[i][stop2]
-		lines[m.NReels*2+i] = m.ReelStrips[i][stop3]
+		lines[i] = m.ms.ReelStrips[i][stop1]
+		lines[m.ms.ReelsCount+i] = m.ms.ReelStrips[i][stop2]
+		lines[m.ms.ReelsCount*2+i] = m.ms.ReelStrips[i][stop3]
 	}
 
 	return lines
@@ -94,17 +113,17 @@ func (m *Machine) CheckPayline(lines []Symbol, i int) (Symbol, int) {
 	startSym := EmptySym
 	symCount := 0
 
-	for _, idx := range m.Paylines[i] {
+	for _, idx := range m.ms.Paylines[i] {
 		sym := lines[idx]
 		// ignore scatter
-		if sym == m.ScatterSymbol {
+		if sym == m.ms.ScatterSymbol {
 			break
 		}
 
-		if startSym == EmptySym || startSym == m.WildSymbol {
+		if startSym == EmptySym || startSym == m.ms.WildSymbol {
 			startSym = sym
 		}
-		if sym == startSym || sym == m.WildSymbol {
+		if sym == startSym || sym == m.ms.WildSymbol {
 			symCount++
 		} else {
 			break
@@ -114,21 +133,24 @@ func (m *Machine) CheckPayline(lines []Symbol, i int) (Symbol, int) {
 	return startSym, symCount
 }
 
-func (m *Machine) CalcRTP(lines []Symbol, n, bet int) int {
+func (m *Machine) ScatterCoeff(lines []Symbol) int {
 	scatters := 0
-	if m.ScatterSymbol != 0 {
+	if m.ms.ScatterSymbol != 0 {
 		for _, sym := range lines {
-			if sym == m.ScatterSymbol {
+			if sym == m.ms.ScatterSymbol {
 				scatters++
 			}
 		}
 	}
+	return m.ms.Pays[m.ms.ScatterSymbol][scatters]
+}
 
-	total := m.Pays[m.ScatterSymbol][scatters]
-	for i := 0; i < n; i++ {
+func (m *Machine) PaylinesCoeff(lines []Symbol) int {
+	coeff := 0
+	for i := 0; i < m.paylines; i++ {
 		sym, count := m.CheckPayline(lines, i)
-		total += m.Pays[sym][count]
+		coeff += m.ms.Pays[sym][count]
 	}
 
-	return total * bet
+	return coeff
 }

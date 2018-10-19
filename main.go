@@ -26,7 +26,7 @@ type result struct {
 type app struct {
 	balanceMu sync.Mutex
 	balance   map[string]int
-	machine   *machine.Machine
+	machines  map[string]*machine.MachineSettings
 }
 
 func (a *app) updateBalance(uid string, amount int) (int, error) {
@@ -63,7 +63,8 @@ func (a *app) handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	spins := a.machine.Run(params.Lines, params.Bet)
+	m := machine.New(a.machines["atkins"], params.Lines, params.Bet, nil)
+	spins := m.Run()
 	total := 0
 	for _, s := range spins {
 		total += s.Total
@@ -99,7 +100,9 @@ func main() {
 			"vasya": 2000,
 			"petya": 5000,
 		},
-		machine: atkins.New(),
+		machines: map[string]*machine.MachineSettings{
+			"atkins": atkins.DefaultSettings(),
+		},
 	}
 	http.HandleFunc("/api/machines/atkins-diet/", a.handler)
 	http.ListenAndServe(":8080", nil)

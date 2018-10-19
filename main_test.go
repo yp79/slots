@@ -22,7 +22,9 @@ func TestAtkinsMachine(t *testing.T) {
 			"vasya": 2000,
 			"petya": 5000,
 		},
-		machine: atkins.New(),
+		machines: map[string]*machine.MachineSettings{
+			"atkins": atkins.DefaultSettings(),
+		},
 	}
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

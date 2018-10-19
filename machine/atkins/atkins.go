@@ -20,7 +20,7 @@ const (
 )
 
 var SymbolNames = map[machine.Symbol]string{
-	EmptySym:     "no sym",
+	EmptySym:     "<EmptySym>",
 	Scale:        "scale",
 	Atkins:       "atkins",
 	Steak:        "steak",
@@ -34,7 +34,7 @@ var SymbolNames = map[machine.Symbol]string{
 	Mayonnaise:   "mayonnaise",
 }
 
-func New() *machine.Machine {
+func DefaultSettings() *machine.MachineSettings {
 	reelStrips := [][]machine.Symbol{
 		{
 			Scale,
@@ -245,14 +245,16 @@ func New() *machine.Machine {
 		{0, 0, 0, 10, 25, 50},
 	}
 
-	return &machine.Machine{
+	return &machine.MachineSettings{
 		ReelStrips:    reelStrips,
 		Paylines:      paylines,
 		Pays:          pays,
 		SymbolNames:   SymbolNames,
+		FreeSpins:     10,
+		FreeSpinsMult: 3,
 		RetriggerFree: true,
 		ScatterSymbol: Scale,
 		WildSymbol:    Atkins,
-		NReels:        5,
+		ReelsCount:    5,
 	}
 }
